@@ -1,0 +1,16 @@
+{
+  "basic_stats": {
+    "description": "Средние значения времени ответа по количеству клиентов",
+    "query": "SELECT server_type, clients_total, ROUND(AVG(t_send_success), 6), ROUND(AVG(t_response), 6) FROM test GROUP BY clients_total, server_type",
+    "headers": ["Тип сервера", "Всего клиентов", "Среднее время ответа"]
+  },
+  "raw_stats": {
+    "description": "Values of start & end timestamps",
+    "query": "SELECT server_type, clients_total, t_send_success, t_response FROM test WHERE t_send_success IS NOT NULL AND t_response IS NOT NULL ORDER BY server_type, clients_total",
+    "headers": ["Тип сервера", "Всего клиентов", "Начало отправки", "Получение ответа"]
+  },
+  "server_errors": {
+    "description": "Ошибки сервера при нагрузке",
+    "query": "SELECT * FROM server_log ORDER BY timestamp DESC"
+  }
+}
