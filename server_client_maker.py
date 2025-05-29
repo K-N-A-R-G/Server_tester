@@ -10,7 +10,7 @@ import time
 
 from collections.abc import Callable
 from db_utils import init_db, send_to_base
-from graf_matplotlib_tkinter import make_table
+from graph_matplotlib_tkinter import make_table
 from server import server_sock, server_select, srv_status,\
  server_unblocked, server_mixed, server_async
 from types_common import LogData, NamedQueue

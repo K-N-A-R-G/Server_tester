@@ -1,16 +1,43 @@
 {
   "basic_stats": {
-    "description": "Средние значения времени ответа по количеству клиентов",
+    "description": "Average send & response values for client`s waves",
     "query": "SELECT server_type, clients_total, ROUND(AVG(t_send_success), 6), ROUND(AVG(t_response), 6) FROM test GROUP BY clients_total, server_type",
-    "headers": ["Тип сервера", "Всего клиентов", "Среднее время ответа"]
+    "headers": [
+      "Server type",
+      "Total clients",
+      "Average time send-response"
+    ]
   },
   "raw_stats": {
-    "description": "Values of start & end timestamps",
+    "description": "Values of start & end timestamps for each client",
     "query": "SELECT server_type, clients_total, t_send_success, t_response FROM test WHERE t_send_success IS NOT NULL AND t_response IS NOT NULL ORDER BY server_type, clients_total",
-    "headers": ["Тип сервера", "Всего клиентов", "Начало отправки", "Получение ответа"]
+    "headers": [
+      "Server type",
+      "Total clients",
+      "Begin og sending",
+      "Getting response"
+    ]
   },
   "server_errors": {
-    "description": "Ошибки сервера при нагрузке",
+    "description": "Critical server errors",
     "query": "SELECT * FROM server_log ORDER BY timestamp DESC"
-  }
+  },
+  "client_success_summary": {
+  "description": "Clients with 2, 1 or 0 successful exchanges per wave and server",
+  "query": "SELECT server_type, clients_total, SUM(CASE WHEN success_count = 2 THEN 1 ELSE 0 END) AS full_success, SUM(CASE WHEN success_count = 1 THEN 1 ELSE 0 END) AS half_success FROM (SELECT server_type, clients_total, client_id, COUNT(*) AS cnt, SUM(CASE WHEN error = '' THEN 1 ELSE 0 END) AS success_count FROM test GROUP BY server_type, clients_total, client_id HAVING cnt = 2) AS pairs GROUP BY server_type, clients_total ORDER BY server_type, clients_total",
+  "headers": [
+    "Server type",
+    "Total clients",
+    "Full success (2)",
+    "Partial success (1)"
+    ]
+  },
+  "server_max_wave": {
+  "description": "Maximum clients_total each server reached before failure or full completion",
+  "query": "SELECT server_type, MAX(clients_total) AS max_wave FROM test GROUP BY server_type ORDER BY server_type",
+  "headers": [
+    "Server type",
+    "Max clients"
+  ]
+}
 }

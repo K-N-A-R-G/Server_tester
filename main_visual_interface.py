@@ -2,52 +2,21 @@
 import multiprocessing
 import server_client_maker as scm
 import threading
+import time
 import tkinter as tk
 
 from db_utils import get_from_base
-from query_loader import get_query
-from graf_matplotlib_tkinter import draw_metric_grouped_by_server, make_table,\
- plot_line_multi_metric
-from query_loader import get_query, list_templates
-from db_utils import get_from_base
-
-
-def choose_template():
-    'Select template from list extracted from JSON'
-    templates = list_templates()
-    print("\nAviable query templates:")
-    for i, (name, desc) in enumerate(templates.items(), start=1):
-        print(f"{i}. {name} – {desc}")
-    print("0. Default query (basic_stats)\nq - exit to previous menu")
-    while True:
-        selection = input("Select : ").strip()
-        try:
-            if selection in 'Qq':
-                return None
-            elif selection == '0':
-                name = 'basic_stats'
-            else:
-                index = int(selection) - 1
-                name = list(templates.keys())[index]
-        except Exception:
-            print("Wrong choise.")
-            continue
-
-        if not name:
-            continue
-        return name
-
-
-def extract_metric_from_query(query: str) -> str | None:
-    import re
-    # Пример: SELECT ..., AVG(t_response) AS avg_response ...
-    match = re.search(r'AVG\((\w+)\)', query, re.IGNORECASE)
-    if match:
-        return match.group(1)
-    return None
+from graph_matplotlib_tkinter import make_table, plot_line_multi_metric,\
+ show_client_success_diagram, group_summary_by_server,\
+ plot_max_clients_per_server
+from query_loader import choose_template, get_query
+from typing import Any
 
 
 def close_windows():
+    """
+    Close all Tkinter Toplevel windows and exit the main loop.
+    """
     for win in root.winfo_children():
         if isinstance(win, tk.Toplevel):
             win.destroy()
@@ -55,21 +24,30 @@ def close_windows():
 
 
 def main():
+    """
+    Main interactive console interface loop.
+    Presents options to run tests, show SQL tables, and plot graphs.
+    Starts relevant tasks in threads or separate processes to avoid blocking.
+    """
     while True:
-        print("\n--- Аналитический интерфейс ---")
-        print("1. Запустить новый тест (сервер + клиенты)")
+        print("\n--- Analitical interface ---")
+        print("1. Run test (server + clients)")
         print("2. Show table by SQL query")
         print("3. Make graph")
-        print('4. Reserved for diagram/histogram')
-        print("0. Выйти")
-        choice = input("Ваш выбор:\n ").strip()
+        print('4. Show diagram')
+        print("0. Exit program")
+        choice = input("You choice:\n ").strip()
 
         if choice == '1':
             scm.run_test_suite()
         elif choice == '2':
-            threading.Thread(target=make_table, args=(choose_template(),),
+            # Run table display in a daemon thread
+            threading.Thread(target=make_table,
+             args=(choose_template(),),
              daemon=True).start()
-        elif choice == '3':  # график
+            time.sleep(2)
+        elif choice == '3':
+            # Select aggregation mode for plotting
             mode = input("Choose aggregation type:\n"
              "1. Median\n"
              "2. 90th percentile\n"
@@ -84,20 +62,62 @@ def main():
                 mode = 'p99'
             else:
                 mode = 'avg'
+            # Run plotting in a separate process to avoid blocking
             multiprocessing.Process(target=plot_line_multi_metric,
              args=(mode,), daemon=True).start()
+            time.sleep(2)
+        elif choice == '4':
+            while True:
+                dia_type = input('Select type of diagram:\
+\n 1. Server lifetime summary - Show maximum wave (clients_total) reached by\
+each server, with error if any.\
+\n 2.Client success distribution (per server) - Select a server and display\
+the ratio of fully/partially/failed connections across all waves\n')
+                if dia_type:
+                    if dia_type == '1':
+                        try:
+                            multiprocessing.Process(
+                             target=plot_max_clients_per_server,
+                             daemon=True).start()
+                        except Exception as ex:
+                            raise
+                    elif dia_type == '2':
+                        _, query, headers_ =\
+                         get_query('client_success_summary')
+                        raw_summary: list[tuple[str, int, int, int]] =\
+                         get_from_base(query)[1]
+                        server_groups = group_summary_by_server(raw_summary)
+
+                        for c, x in enumerate(server_groups.keys(), start=1):
+                            print(f'{c}. {x}')
+                        srv_type = input('\nNumber? ')
+                        if srv_type:
+                            try:
+                                group_data =\
+                                 server_groups[list(server_groups)[int(srv_type) - 1]]
+                                multiprocessing.Process(
+                                 target=show_client_success_diagram,
+                                 args=(list(server_groups)[int(srv_type) - 1],
+                                 group_data),
+                                 daemon=True).start()
+                            except Exception as ex:
+                                raise
+                    else:
+                        print('Cancelled')
+                        break
         elif choice == '0':
+            # Close all additional windows and quit main loop
             for win in root.winfo_children():
                 if isinstance(win, tk.Toplevel):
                     win.destroy()
             root.after(0, close_windows)
             break
         else:
-            print("Неверный ввод")
+            print("Incorrect input")
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.withdraw()
+    root.withdraw()  # Hide main Tk window
     threading.Thread(target=main, daemon=True).start()
     root.mainloop()

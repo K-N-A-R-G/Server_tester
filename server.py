@@ -63,7 +63,6 @@ def send_response(client_sock: socket.socket,
         if err.errno == 11:
             # print('send_response" ', err)
             return True
-            # raise ConnectionError("Connection lost")
     try:
         now = time.time()
         mark = struct.unpack('!hd', data)[0]
@@ -211,11 +210,6 @@ def server_unblocked(
                     print('\033[31mSERVER CRASHED\033[0m')
                     srv_status[0] = False
                     break
-                # print(f'{SERVER_TYPE}:', ex)
-                # log_server_error(
-                 # queue_, SERVER_TYPE,
-                 # clients_total, 'unblocked_error', str(ex))
-                # break
                 raise
 
     event_loop(srv, QUE, total_clients_quantity)
@@ -253,7 +247,6 @@ def server_mixed(
                     break
 
                 try:
-                    # проверка готовности всех клиентских сокетов на чтение
                     sockets_for_read, _, _ = select.select(sockets, [], [], 0)
                 except Exception as ex:
                     if is_server_crashed(ex):

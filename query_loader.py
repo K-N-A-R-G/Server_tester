@@ -8,6 +8,9 @@ TEMPLATE_PATH = Path("query_templates.json")
 
 
 def load_templates() -> Any:
+    '''Load SQL query templates from the JSON file. Returns an empty dictionary
+ if the file does not exist.
+    '''
     if TEMPLATE_PATH.exists():
         with TEMPLATE_PATH.open("r", encoding="utf-8") as f:
             return json.load(f)
@@ -15,11 +18,15 @@ def load_templates() -> Any:
 
 
 def save_templates(templates: Dict[str, Dict[str, str]]) -> None:
+    '''Save the given SQL query templates to the JSON file.'''
     with TEMPLATE_PATH.open("w", encoding="utf-8") as f:
         json.dump(templates, f, ensure_ascii=False, indent=2)
 
 
 def get_query(name: str) -> tuple[str, Optional[list[str]]]:
+    '''Retrieve the description, SQL text, and optional headers
+ for a given template name.
+    '''
     templates = load_templates()
     entry = templates.get(name)
     if entry:
@@ -28,18 +35,60 @@ def get_query(name: str) -> tuple[str, Optional[list[str]]]:
     return "", "", None
 
 
+def choose_template() -> str | None:
+    '''
+    Launch an interactive menu to select, add, edit, or delete SQL query
+ templates. Returns the name of the selected template or None on exit.'''
+    while True:
+        templates = list_templates()
+        print("\nAviable query templates:")
+        for i, (name, desc) in enumerate(templates.items(), start=1):
+            print(f"{i}. {name} – {desc}")
+        print('0. Default query (basic_stats)')
+        print('\033[2;36ma - add/edit template')
+        print('d - delete template\033[0m')
+        selection = input("Select : ").strip()
+        if selection:
+            try:
+                if selection in 'Qq':
+                    return None
+                elif selection == '0':
+                    name = 'basic_stats'
+                elif selection.isdigit():
+                    index = int(selection) - 1
+                    name = list(templates.keys())[index]
+                elif selection in 'Aa':
+                    add_template()
+                elif selection in 'Dd':
+                    delete_template()
+            except Exception:
+                print("Wrong choise.")
+                continue
+
+            if not name:
+                continue
+            return name
+
 
 def list_templates() -> Dict[str, str]:
+    '''Return a dictionary of template names and their descriptions.'''
     templates = load_templates()
     return {key: val["description"] for key, val in templates.items()}
 
 
-def add_template(name: str, description: str, query: str) -> None:
+def add_template() -> None:
+    '''Interactively add a new SQL query template, or edit an existing one
+    if the name already exists
+    '''
+    name: str = input('Template name? ')
+    if not name:
+        print('Cancel')
+        return None
     templates = load_templates()
     if name in templates:
         option = input('Query name already exists,\
-         do you want to edit it? ("Y"/any)\n')
-        if option in 'Yy':
+ do you want to edit it? ("Y"/any)\n')
+        if option and option in 'Yy':
             description, query = interactive_edit(name, templates)
             save_templates(templates)
             print('Query template updated\n')
@@ -49,6 +98,9 @@ def add_template(name: str, description: str, query: str) -> None:
             return None
     description = input('Description: \n')
     query = input('Query: \n')
+    if not query:
+        print('Empty queue. Cancel')
+        return None
     templates[name] = {
         "description": description,
         "query": query
@@ -58,25 +110,38 @@ def add_template(name: str, description: str, query: str) -> None:
     return None
 
 
-def delete_template(name: str) -> str:
+def delete_template():
+    '''Delete a template by name after user confirmation.'''
+    name: str = input('Template name? ')
+    if not name:
+        print('Cancel')
+        return None
     templates = load_templates()
     if name in templates:
-        del templates[name]
-        save_templates(templates)
-        return f"'{name}' deleted."
-    return f"'{name}' not found."
+        action = input(
+         f'Do you realy want to delete "{name}" template? (Y/N)\n')
+        if action in 'Yy':
+            del templates[name]
+            save_templates(templates)
+            print(f"'{name}' deleted.")
+            return None
+        else: return None
+    print(f'"{name}" not found.')
+    return None
 
 
 def interactive_edit(
  name: str,
  templates: Dict[str, Dict[str, str]]) -> tuple[str, str]:
+    '''nteractively edit an existing SQL query and its description. Returns
+ the new description and query string.'''
     current_query = templates[name]["query"]
     current_description = templates[name]['description']
-    print(f"Текущий шаблон '{name}':")
+    print(f"Current template: '{name}':")
     print("-" * 40)
     print(current_query)
     print("-" * 40)
-    print("Введите обновлённый запрос. Пустая строка завершает ввод:")
+    print("Type  new query. An empty line ends the input:")
 
     new_lines = []
     while True:
@@ -89,7 +154,7 @@ def interactive_edit(
         new_lines.append(line)
 
     if not new_lines:
-        print("Редактирование отменено: пустой ввод.")
+        print("Edit canceled: empty input.")
         return current_query, current_description
 
     new_query = " ".join(new_lines)
