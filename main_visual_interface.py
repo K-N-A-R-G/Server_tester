@@ -8,7 +8,7 @@ import tkinter as tk
 from db_utils import get_from_base
 from graph_matplotlib_tkinter import make_table, plot_line_multi_metric,\
  show_client_success_diagram, group_summary_by_server,\
- plot_max_clients_per_server
+ plot_max_clients_per_server, plot_avg_response_per_server
 from query_loader import choose_template, get_query
 from typing import Any
 
@@ -70,9 +70,11 @@ def main():
             while True:
                 dia_type = input('Select type of diagram:\
 \n 1. Server lifetime summary - Show maximum wave (clients_total) reached by\
-each server, with error if any.\
+ each server, with error if any.\
 \n 2.Client success distribution (per server) - Select a server and display\
-the ratio of fully/partially/failed connections across all waves\n')
+ the ratio of fully/partially/failed connections across all waves\
+\n 3. Average server response time - Show average/median/percentile (pNN)\
+ response times per server type\n')
                 if dia_type:
                     if dia_type == '1':
                         try:
@@ -102,6 +104,27 @@ the ratio of fully/partially/failed connections across all waves\n')
                                  daemon=True).start()
                             except Exception as ex:
                                 raise
+                    elif dia_type == '3':
+                        # Select aggregation mode for diagram
+                        mode = input("Choose aggregation type:\n"
+                         "1. Median\n"
+                         "2. 90th percentile\n"
+                         "3. 99th percentile\n"
+                         "Any other = Average\n> ").strip()
+                        mode = mode.lower()
+                        if mode == '1':
+                            mode = 'median'
+                        elif mode == '2':
+                            mode = 'p90'
+                        elif mode == '3':
+                            mode = 'p99'
+                        else:
+                            mode = 'avg'
+                        # Run plotting in a separate process to avoid blocking
+                        multiprocessing.Process(
+                         target=plot_avg_response_per_server,
+                         args=(mode,), daemon=True).start()
+                        time.sleep(2)
                     else:
                         print('Cancelled')
                         break

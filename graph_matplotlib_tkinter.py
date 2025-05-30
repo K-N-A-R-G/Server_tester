@@ -119,7 +119,7 @@ def plot_line_multi_metric(mode='avg'):
     # X-axis limits and ticks setup
     limits = (64, 4097, 64)
     num_ticks = (limits[1] - limits[0]) // limits[2]
-    max_label_len = max(map(len, str(limits).strip('()').split(', ')))
+    max_label_len = len(str(limits[1]))
     scale = 0.14
     fig_width = num_ticks * max_label_len * scale
 
@@ -413,3 +413,98 @@ def plot_max_clients_per_server() -> None:
     ax.set_ylim(0, max(values) * 1.15)
 
     win.mainloop()
+
+
+def plot_avg_response_per_server(mode: str = 'mean') -> None:
+    """
+    Display a bar chart comparing average response time per server_type.
+
+    Parameters:
+        mode (str): Aggregation method for time values.
+            - 'mean': average
+            - 'median': median
+            - 'pNN': percentile (e.g., 'p90', 'p99')
+    """
+    try:
+        title_, query, headers_ = get_query('raw_stats')
+        columns, rows = get_from_base(query)
+    except Exception as ex:
+        print("Error fetching data:", ex)
+        return
+
+    try:
+        # Group response times by server_type
+        data: dict[str, list[float]] = {}
+        for row in rows:
+            server_type = row[0]
+            t_response = row[3]
+            if t_response is not None:
+                data.setdefault(server_type, []).append(t_response)
+
+        # Aggregate according to mode
+        summary: dict[str, float] = {}
+        for srv, values in data.items():
+            if not values:
+                continue
+            if mode == 'median':
+                summary[srv] = float(np.median(values))
+            elif mode.startswith('p') and mode[1:].isdigit():
+                summary[srv] = float(np.percentile(values, int(mode[1:])))
+            else:
+                summary[srv] = float(np.mean(values))
+
+        # Prepare data
+        labels = list(summary.keys())
+        values = list(summary.values())
+        max_label_len = max(map(len, labels))
+        scale = 0.14
+        fig_width = max(6, len(labels) * max_label_len * scale)
+
+        # Create window
+        win = tk.Tk()
+        win.title(f"Average response time per server ({mode})")
+
+        fig, ax = plt.subplots(figsize=(fig_width, 5))
+        bars = ax.bar(labels, values, color='mediumseagreen')
+        ax.set_ylabel("Response time (seconds)")
+        ax.set_title(f"Server response time aggregated by {mode}")
+        ax.grid(axis='y', linestyle='--', alpha=0.5)
+
+        # Label each bar
+        for bar, val in zip(bars, values):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2, height + height * 0.03,
+                    f"{val:.6f}", ha='center', va='bottom', fontsize=8)
+
+        ax.set_ylim(0, max(values) * 1.15)
+        fig.tight_layout()
+
+        # Scrollable canvas
+        canvas_frame = tk.Frame(win)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+        x_scrollbar = tk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL)
+        x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        plot_canvas = tk.Canvas(canvas_frame, xscrollcommand=x_scrollbar.set)
+        plot_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        x_scrollbar.config(command=plot_canvas.xview)
+
+        figure_canvas = FigureCanvasTkAgg(fig, master=plot_canvas)
+        figure_widget = figure_canvas.get_tk_widget()
+        plot_canvas.create_window((0, 0), window=figure_widget, anchor='nw')
+
+        figure_widget.update_idletasks()
+        plot_canvas.config(scrollregion=plot_canvas.bbox("all"))
+
+        toolbar = NavigationToolbar2Tk(figure_canvas, win)
+        toolbar.update()
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        btn_close = tk.Button(win, text="Close", command=win.destroy)
+        btn_close.pack(pady=5)
+
+        win.mainloop()
+
+    except Exception as ex:
+        print("Error during visualization:", ex)

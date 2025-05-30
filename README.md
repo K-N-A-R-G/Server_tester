@@ -1,9 +1,13 @@
 # Server-Client Benchmarking and Visualization Suite
 
-This project provides tools for running server-client performance tests, collecting statistical data into PostgreSQL, and visualizing results interactively via Tkinter and Matplotlib.
+This project provides tools for running server-client performance tests, collecting statistical data into SQLite, and visualizing results interactively via Tkinter and Matplotlib.
 
 ---
+![table](images/table.png)
+![graph](images/graph.png)
+![diagram](images/diagram.png)
 
+---
 ## Overview
 
 The suite includes:
@@ -24,12 +28,14 @@ Allows running test suites, selecting SQL query templates, viewing results as ta
 
 ### graph_matplotlib_tkinter.py
 
-Functions to plot graphs using Matplotlib embedded in Tkinter windows.
+Functions to make tables and plot graphs using Matplotlib embedded in Tkinter windows.
+
+Table creation occurs in separate threads, while graphs are generated in separate processes, allowing multiple such windows to be displayed on screen simultaneously.
 Includes scrollbars for navigating wide data ranges and interactive toolbar for zooming and saving.
 
 ### db_utils.py
 
-Database helper functions for executing SQL queries and fetching results from PostgreSQL.
+Database helper functions for executing SQL queries and fetching results from SQLite.
 
 ### query_loader.py
 
@@ -38,7 +44,7 @@ Supports listing, loading, and editing templates interactively.
 
 ### server_client_maker.py
 
-Contains logic for launching and controlling server and client processes used in benchmarks.
+Contains logic for launching and controlling server and client processes used in benchmarks. You can run this module directly, bypassing the main interface, if you only need to populate the database with test results.
 
 ---
 
@@ -53,17 +59,29 @@ Contains logic for launching and controlling server and client processes used in
 
 3. Customize SQL queries by editing JSON templates to tailor data views.
 
+### How It Works
+
+Before any visualization can be performed, the database must be populated with test results. This is achieved by launching waves of client connections for the selected server type.
+
+Each client, upon establishing a connection, performs two consecutive *"send message – receive response"* operations. Every intermediate stage of these actions, along with any potential errors, is logged with timestamps or measured durations of successful events.
+
+The test begins with 64 clients launched simultaneously (in separate threads). Each subsequent wave adds 64 more clients, up to a maximum of 4096, or until a fatal server error occurs. In the event of such an error, remaining clients in the current wave attempt to complete their work and log results, after which the test terminates.
+
+Before each test run, you will be prompted to either **drop and recreate** the entire log database or **append** results to the existing one.
+
+Once the log database is available, you can display the results of raw and post-processed SQL queries as tables, graphs, and charts. It is also possible to create new SQL queries and edit existing ones using a built-in console editor.
+
+> ⚠️ **Note**: There is no validation of the SQL queries you write. Errors will only become apparent when you try to use a faulty query.
+
 ---
 
 ## Requirements
 
-- Python 3.13+
-- PostgreSQL server accessible with proper credentials
-- Required Python packages (install via Poetry or pip):
-  - tkinter
+#### Python 3.12+ (if you remove modern type annotations from the code, then 3.9+)
+
+- Required Python packages (install via Poetry, uv or pip):
   - matplotlib
   - numpy
-  - psycopg2 (or equivalent PostgreSQL driver)
 
 ---
 
@@ -72,15 +90,3 @@ Contains logic for launching and controlling server and client processes used in
 - Tables are loaded incrementally in batches to keep UI responsive.
 - Graphs support horizontal scrolling to accommodate large X-axis ranges.
 - Aggregation modes can be extended by modifying plotting functions.
-
----
-
-## License
-
-*(Add license info here)*
-
----
-
-## Contact
-
-For questions or contributions, please contact Knarg.
