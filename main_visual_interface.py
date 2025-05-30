@@ -10,7 +10,6 @@ from graph_matplotlib_tkinter import make_table, plot_line_multi_metric,\
  show_client_success_diagram, group_summary_by_server,\
  plot_max_clients_per_server, plot_avg_response_per_server
 from query_loader import choose_template, get_query
-from typing import Any
 
 
 def close_windows():
@@ -81,7 +80,7 @@ def main():
                             multiprocessing.Process(
                              target=plot_max_clients_per_server,
                              daemon=True).start()
-                        except Exception as ex:
+                        except Exception:
                             raise
                     elif dia_type == '2':
                         _, query, headers_ =\
@@ -102,7 +101,7 @@ def main():
                                  args=(list(server_groups)[int(srv_type) - 1],
                                  group_data),
                                  daemon=True).start()
-                            except Exception as ex:
+                            except Exception:
                                 raise
                     elif dia_type == '3':
                         # Select aggregation mode for diagram

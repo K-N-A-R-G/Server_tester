@@ -2,14 +2,11 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-import sqlite3
 import tkinter as tk
 
-from collections import defaultdict
 from db_utils import get_from_base
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
  NavigationToolbar2Tk
-from matplotlib.ticker import MaxNLocator
 from query_loader import get_query
 from tkinter import ttk, TclError
 
@@ -51,8 +48,8 @@ def make_table(query_name: str | None) -> None:
     tree.pack(fill=tk.BOTH, expand=True)
 
     # Configure columns: set heading text and center alignment
-    for col in columns:
-        tree.heading(col, text=col, anchor="center")
+    for col, head in zip(columns, headers):
+        tree.heading(col, text=head, anchor="center")
         tree.column(col, anchor="center")
 
     def insert_rows(index=0):

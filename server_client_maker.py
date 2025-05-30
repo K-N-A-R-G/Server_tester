@@ -1,6 +1,5 @@
 # server_client_maker.py
 
-import queue
 import random
 import resource
 import socket

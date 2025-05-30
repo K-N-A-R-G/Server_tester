@@ -5,7 +5,7 @@ import sqlite3
 
 from query_loader import get_query
 from typing import Any
-from types_common import NamedQueue, LogData, ServerLogData
+from types_common import NamedQueue
 
 
 DB_NAME = "statistics.sqlite"

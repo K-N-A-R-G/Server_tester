@@ -3,6 +3,8 @@
 This project provides tools for running server-client performance tests, collecting statistical data into SQLite, and visualizing results interactively via Tkinter and Matplotlib.
 
 ---
+Table view, multi-line graph, and stacked diagram examples:
+
 ![table](images/table.png)
 ![graph](images/graph.png)
 ![diagram](images/diagram.png)
@@ -85,8 +87,20 @@ Once the log database is available, you can display the results of raw and post-
 
 ---
 
+## Installation
+
+#### Clone this repository:
+   ```bash
+   git clone https://github.com/K-N-A-R-G/Server_tester.git
+```
+---
+
 ## Development Notes
 
 - Tables are loaded incrementally in batches to keep UI responsive.
 - Graphs support horizontal scrolling to accommodate large X-axis ranges.
 - Aggregation modes can be extended by modifying plotting functions.
+---
+## Contributing
+
+This is a personal project and not currently accepting external contributions.

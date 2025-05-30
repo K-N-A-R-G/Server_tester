@@ -40,7 +40,7 @@ def choose_template() -> str | None:
     templates. Returns the name of the selected template or None on exit.'''
     while True:
         templates = list_templates()
-        print("\nAviable query templates:")
+        print("\nAvaiable query templates:")
         for i, (name, desc) in enumerate(templates.items(), start=1):
             print(f"{i}. {name} – {desc}")
         print('0. Default query (basic_stats)')
@@ -98,7 +98,7 @@ def add_template() -> None:
     description = input('Description: \n')
     query = input('Query: \n')
     if not query:
-        print('Empty queue. Cancel')
+        print('Empty query. Cancel')
         return None
     templates[name] = {
         "description": description,
