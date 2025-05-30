@@ -1,6 +1,6 @@
 # types_common.py
 
-from typing import Any, Mapping, TypedDict, Optional, Literal
+from typing import TypedDict, Literal
 import queue
 
 
@@ -9,12 +9,12 @@ class LogData(TypedDict):
     server_type: str
     client_id: int | None
     clients_total: int
-    conn_attempt: Optional[int]
-    t_send_attempt: Optional[float]
-    send_id: Optional[int]
-    t_send_success: Optional[float]
-    t_server_response: Optional[float]
-    t_response: Optional[float]
+    conn_attempt: int | None
+    t_send_attempt: float | None
+    send_id: int | None
+    t_send_success: float | None
+    t_server_response: float | None
+    t_response: float | None
     error: str
 
 

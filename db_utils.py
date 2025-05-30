@@ -14,12 +14,12 @@ DB_NAME = "statistics.sqlite"
 def init_db(DB_NAME: str=DB_NAME, new: bool=False) -> None:
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        #  Режим журнала Write-Ahead Logging (WAL) в SQLite:
-        #  Повышенная конкурентность;
-        #  Более быстрая запись;
-        #  Меньшее количество fsync();
-        #  Автоматический чекпойнт (checkpoint)
-        #  Устанавливать сразу же после соединения с базой
+        #  Write-Ahead Logging (WAL) mode in SQLite:
+        #  Increased concurrency;
+        #  Faster write performance;
+        #  Fewer fsync() calls;
+        #  Automatic checkpointing;
+        #  Should be set immediately after connecting to the database
         cur.execute("PRAGMA journal_mode=WAL;")
         if new:
             cur.execute("DROP TABLE IF EXISTS test;")

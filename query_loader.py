@@ -2,14 +2,13 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Optional, Any
 
 TEMPLATE_PATH = Path("query_templates.json")
 
 
-def load_templates() -> Any:
+def load_templates() -> dict[str, dict[str, str]] | dict:
     '''Load SQL query templates from the JSON file. Returns an empty dictionary
- if the file does not exist.
+    if the file does not exist.
     '''
     if TEMPLATE_PATH.exists():
         with TEMPLATE_PATH.open("r", encoding="utf-8") as f:
@@ -17,28 +16,28 @@ def load_templates() -> Any:
     return {}
 
 
-def save_templates(templates: Dict[str, Dict[str, str]]) -> None:
+def save_templates(templates: dict[str, dict[str, str]]) -> None:
     '''Save the given SQL query templates to the JSON file.'''
     with TEMPLATE_PATH.open("w", encoding="utf-8") as f:
         json.dump(templates, f, ensure_ascii=False, indent=2)
 
 
-def get_query(name: str) -> tuple[str, Optional[list[str]]]:
+def get_query(name: str) -> tuple[str, str, list[str] | None]:
     '''Retrieve the description, SQL text, and optional headers
- for a given template name.
+    for a given template name.
     '''
     templates = load_templates()
     entry = templates.get(name)
     if entry:
         return entry.get("description", ""), entry.get("query", ""),\
-         entry.get("headers")
+            entry.get("headers")
     return "", "", None
 
 
 def choose_template() -> str | None:
     '''
     Launch an interactive menu to select, add, edit, or delete SQL query
- templates. Returns the name of the selected template or None on exit.'''
+    templates. Returns the name of the selected template or None on exit.'''
     while True:
         templates = list_templates()
         print("\nAviable query templates:")
@@ -70,7 +69,7 @@ def choose_template() -> str | None:
             return name
 
 
-def list_templates() -> Dict[str, str]:
+def list_templates() -> dict[str, str]:
     '''Return a dictionary of template names and their descriptions.'''
     templates = load_templates()
     return {key: val["description"] for key, val in templates.items()}
@@ -110,7 +109,7 @@ def add_template() -> None:
     return None
 
 
-def delete_template():
+def delete_template() -> None:
     '''Delete a template by name after user confirmation.'''
     name: str = input('Template name? ')
     if not name:
@@ -119,22 +118,24 @@ def delete_template():
     templates = load_templates()
     if name in templates:
         action = input(
-         f'Do you realy want to delete "{name}" template? (Y/N)\n')
+            f'Do you realy want to delete "{name}" template? (Y/N)\n')
         if action in 'Yy':
             del templates[name]
             save_templates(templates)
             print(f"'{name}' deleted.")
             return None
-        else: return None
+        else:
+            return None
     print(f'"{name}" not found.')
     return None
 
 
 def interactive_edit(
- name: str,
- templates: Dict[str, Dict[str, str]]) -> tuple[str, str]:
-    '''nteractively edit an existing SQL query and its description. Returns
- the new description and query string.'''
+    name: str,
+    templates: dict[str, dict[str, str]]
+) -> tuple[str, str]:
+    '''Interactively edit an existing SQL query and its description. Returns
+    the new description and query string.'''
     current_query = templates[name]["query"]
     current_description = templates[name]['description']
     print(f"Current template: '{name}':")
@@ -143,7 +144,7 @@ def interactive_edit(
     print("-" * 40)
     print("Type  new query. An empty line ends the input:")
 
-    new_lines = []
+    new_lines: list[str] = []
     while True:
         try:
             line = input()
