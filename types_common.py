@@ -1,7 +1,8 @@
 # types_common.py
 
-from typing import TypedDict, Literal
 import queue
+
+from typing import TypedDict, Literal
 
 
 class LogData(TypedDict):

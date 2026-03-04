@@ -1,5 +1,6 @@
 # server_client_maker.py
 
+import multiprocessing
 import random
 import resource
 import socket
@@ -10,7 +11,7 @@ import time
 from collections.abc import Callable
 from db_utils import init_db, send_to_base
 from graph_matplotlib_tkinter import make_table
-from server import server_sock, server_select, srv_status,\
+from server import server_sock, server_select,\
  server_unblocked, server_mixed, server_async
 from types_common import LogData, NamedQueue
 
@@ -26,10 +27,22 @@ que_next: NamedQueue = NamedQueue('que_next')
 # QUE = que_first
 
 
+def recv_all(sock, n):
+    # Вспомогательная функция для получения ровно n байт
+    data = bytearray()
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None # Соединение разорвано
+        data.extend(packet)
+    return data
+
+
 def client_sock(SERVER_TYPE: str,
  total_clients_quantity: int, QUE: NamedQueue) -> None:
     try:
         clt = socket.socket()
+        clt.settimeout(2.0)
     except OSError as er:
         print(f"!!! UNCAUGHT OSError during client socket creation: {er}")
         return None
@@ -70,7 +83,7 @@ def client_sock(SERVER_TYPE: str,
             attempts = 3000
             break
         except Exception:
-            time.sleep(.001)
+            time.sleep(.0005)
             attempts -= 1
     else:
         log_data['error'] = 'Connection attempts is over'
@@ -93,7 +106,11 @@ def client_sock(SERVER_TYPE: str,
                     # print('sended', data_bytes)
                     t_send_success = round(time.time() - t_send_attempt, 6)
                     log_data['t_send_success'] = t_send_success
-                    t_recv: bytes = clt.recv(1024)
+                    t_recv = recv_all(clt, 10) # Read exactly 10 bytes
+                    if t_recv is None:
+                        raise ConnectionError(
+                         "Server closed connection prematurely"
+                         )
                     # print('client:', t_recv)
                     t_server_response: float = struct.unpack('!hd', t_recv)[1]
                     log_data['t_server_response'] = round(t_server_response, 6)
@@ -120,6 +137,7 @@ def client_sock(SERVER_TYPE: str,
 
 
 def run_test_suite() -> None:
+    shared_srv_status = multiprocessing.Value('b', True)
     while True:
         db_option = input('''
         Do you want to keep the existing database data? (y/n)
@@ -162,19 +180,16 @@ def run_test_suite() -> None:
         time.sleep(0.1)
 
     for total_clients_quantity in range(64, 4097, 64):
-        print(f'\n{srv_status = }')
-        if not srv_status[0]:
+        print(f'\nserver status = {bool(shared_srv_status.value)}')
+        if not shared_srv_status:
             break
         print(f'\n{total_clients_quantity} clients\n')
         QUE = (que_next, que_first)[bool(total_clients_quantity % 128)]
-        if set_option[0] == 'server_async':
-            srv = None
-        else:
-            srv = server_sock()
-        thr_srv = threading.Thread(target=set_option[1],
-                                   args=(srv, QUE, SERVER_TYPE,
-                                         total_clients_quantity))
-        thr_srv.start()
+        pr_srv = multiprocessing.Process(target=set_option[1],
+                                   args=(QUE, SERVER_TYPE,
+                                         total_clients_quantity,
+                                         shared_srv_status))
+        pr_srv.start()
         clts = []
         for _ in range(total_clients_quantity):
             clts.append(threading.Thread(target=client_sock,
@@ -185,7 +200,7 @@ def run_test_suite() -> None:
             x.start()
         for x in clts:
             x.join()
-        thr_srv.join()
+        pr_srv.join()
 
         QUE.put('End')  # type: ignore
         thr_send = threading.Thread(target=send_to_base, args=(QUE,))
@@ -196,4 +211,4 @@ def run_test_suite() -> None:
 
 if __name__ == '__main__':
     run_test_suite()
-    make_table()
+    make_table("basic_stats")

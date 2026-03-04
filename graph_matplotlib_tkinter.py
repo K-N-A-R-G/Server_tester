@@ -11,12 +11,12 @@ from query_loader import get_query
 from tkinter import ttk, TclError
 
 
-def make_table(query_name: str | None) -> None:
+def make_table(query_name: str) -> None:
     """
     Create a Tkinter window displaying a table with query results.
 
     Args:
-        query_name (str): Name of the SQL query template to execute.
+        query_name (str | None): Name of the SQL query template to execute.
                           Defaults to 'basic_stats'.
 
     Behavior:

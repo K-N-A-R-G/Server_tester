@@ -14,7 +14,7 @@
     "headers": [
       "Server type",
       "Total clients",
-      "Begin og sending",
+      "'Send - response' interval",
       "Getting response"
     ]
   },

@@ -54,56 +54,61 @@ def init_db(DB_NAME: str=DB_NAME, new: bool=False) -> None:
         conn.commit()
 
 
-def send_to_base(
- que: NamedQueue, db_name: str=DB_NAME) -> None:
-    with sqlite3.connect(db_name) as conn:
-        cur = conn.cursor()
-        print(que.name, f'connected, ({que.qsize()} elements)')
-        try:
-            while (row := que.get(timeout=1)) != 'End':  # type: ignore
-                # print('sending', que.qsize())
+def _write_log(cursor, row):
+    if row['log_type'] == 'server':
+        cursor.execute(
+             "INSERT INTO server_log ("
+             "server_type, clients_total,"
+             "error_type, message, timestamp"
+             ") VALUES (?, ?, ?, ?, ?)",
+             (
+              row["server_type"],
+              row["clients_total"],
+              row["error_type"],
+              row["message"],
+              row["timestamp"]
+             ))
+    elif row['log_type'] == 'client':
+        cursor.execute(
+             "INSERT INTO test ("
+             "server_type, client_id, conn_attempt,"
+             "clients_total, send_id, t_send_attempt,"
+             "t_send_success, t_server_response, t_response, error"
+             ")"
+             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             (
+              row["server_type"],
+              row["client_id"],
+              row["conn_attempt"],
+              row["clients_total"],
+              row["send_id"],
+              row["t_send_attempt"],
+              row["t_send_success"],
+              row["t_server_response"],
+              row["t_response"],
+              row.get("error")
+             ))
 
-                if row['log_type'] == 'server':
-                    cur.execute(
-                         "INSERT INTO server_log ("
-                         "server_type, clients_total,"
-                         "error_type, message, timestamp"
-                         ") VALUES (?, ?, ?, ?, ?)",
-                         (
-                          row["server_type"],
-                          row["clients_total"],
-                          row["error_type"],
-                          row["message"],
-                          row["timestamp"]
-                         ))
-                elif row['log_type'] == 'client':
-                    cur.execute(
-                         "INSERT INTO test ("
-                         "server_type, client_id, conn_attempt,"
-                         "clients_total, send_id, t_send_attempt,"
-                         "t_send_success, t_server_response, t_response, error"
-                         ")"
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                         (
-                          row["server_type"],
-                          row["client_id"],
-                          row["conn_attempt"],
-                          row["clients_total"],
-                          row["send_id"],
-                          row["t_send_attempt"],
-                          row["t_send_success"],
-                          row["t_server_response"],
-                          row["t_response"],
-                          row.get("error")
-                         ))
-                # print('sended')
-                # que.task_done()
-        except Exception as ex:
-            print(ex)
+
+def send_to_base(
+ data_source: NamedQueue | dict, db_name: str=DB_NAME) -> None:
+    with sqlite3.connect(db_name) as conn:
+        conn.execute("PRAGMA journal_mode=WAl;")
+        cur = conn.cursor()
+
+        if isinstance(data_source, dict):
+            _write_log(cur, data_source)
+        else:
+            print(data_source.name, f'connected, ({data_source.qsize()} elements)')
+            try:
+                while (row := data_source.get(timeout=1)) != 'End':  # type: ignore
+                    _write_log(cur, row)
+            except Exception as ex:
+                print('sending:', ex)
                 # break
-        finally:
-            conn.commit()
-            print(que.name, f'sended, {que.qsize()} left')
+            finally:
+                conn.commit()
+                print(data_source.name, f'sended, {data_source.qsize()} left')
 
 
 def extract_table_name(query: str) -> str | None:

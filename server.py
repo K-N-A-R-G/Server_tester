@@ -1,15 +1,43 @@
 # server.py
 
 import asyncio
+import resource
 import select
 import socket
 import struct
 import time
 
+from db_utils import send_to_base
+from multiprocessing.sharedctypes import Synchronized
 from types_common import NamedQueue, LogDict
 
 
-srv_status: list[bool] = [True]
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+
+
+class ClientConnection:
+    __slots__ = ('sock', 'pocket', '_hash')
+
+    def __init__(self, sock: socket.socket):
+        self.sock = sock
+        self.pocket = bytearray()
+        self._hash = hash(sock)
+
+    def __hash__(self): return self._hash
+
+    def __eq__(self, other):
+        return isinstance(other, ClientConnection) and self.sock is other.sock
+
+    def fileno(self):
+        return self.sock.fileno()
+
+    def close(self):
+        try:
+            self.sock.close()
+        finally:
+            self.pocket.clear()
+
 
 def server_sock() -> socket.socket:
     srv = socket.socket()
@@ -22,26 +50,32 @@ def server_sock() -> socket.socket:
 
 def accept_conn(
  sck: socket.socket,
- sockets: set[socket.socket],
+ sockets: set[ClientConnection],
  queue_: NamedQueue,
  clients_total: int,
  SERVER_TYPE: str,
+ srv_status: Synchronized,
  mode: str = 'blocking') -> None:
     try:
         conn, addr = sck.accept()
+
         if mode == 'unblocking':
             conn.setblocking(False)
-        # print(f"Connection from {addr}")
-        sockets.add(conn)
+
+        # Package the socket into a ClientConnection object right here.
+        # This ensures that a "unit" enters the set with a buffer ready.
+        new_client = ClientConnection(conn)
+        sockets.add(new_client)
+
     except BlockingIOError:
         raise
     except OSError as ex:
-        if is_server_crashed(ex) and srv_status[0]:
+        if is_server_crashed(ex) and srv_status.value:
             print('\033[91mserver accept fatal error\033[0m')
             log_server_error(
              queue_, SERVER_TYPE, clients_total,
              'fatal_error', str(ex))
-            srv_status[0] = False
+            srv_status.value = False
         return None
     except socket.error as err:
         log_server_error(
@@ -50,40 +84,45 @@ def accept_conn(
     return None
 
 
-def send_response(client_sock: socket.socket,
+def send_response(conn: ClientConnection,
                   queue_: NamedQueue,
                   clients_total: int,
-                  SERVER_TYPE: str) -> bool:
+                  SERVER_TYPE: str,
+                  srv_status: Synchronized) -> bool:
+    # 1. IO Section (Reading)
     try:
-        data = client_sock.recv(1024)
-        # print('received', data)
+        data = conn.sock.recv(1024)
         if not data:
             return False
+        conn.pocket.extend(data)
     except socket.error as err:
-        if err.errno == 11:
-            # print('send_response" ', err)
+        if err.errno == 11: # EAGAIN
             return True
-    try:
-        now = time.time()
-        mark = struct.unpack('!hd', data)[0]
-        # print(f'{now = }')
-        response = struct.pack('!hd', mark, now)
-        # print(f'{struct.unpack("!hd", response) = }')
-        client_sock.send(response)
-    except socket.error as err:
-        log_server_error(
-         queue_, SERVER_TYPE, clients_total,
-         'recv_send_error', str(err))
-        client_sock.close()
+        log_server_error(queue_, SERVER_TYPE, clients_total, 'recv_error', str(err))
         return False
+
+    # 2. Control Section (Completeness of Message)
+    if len(conn.pocket) < 10:
+        return True
+
+    # 3. Logic and Response Section (Processor + Write)
+    try:
+        # Extract the packet atomically
+        raw_packet = conn.pocket[:10]
+        del conn.pocket[:10]
+
+        mark = struct.unpack('!hd', raw_packet)[0]
+        response = struct.pack('!hd', mark, time.time())
+
+        # Forwarding 10 bytes at once will not block the thread
+        conn.sock.sendall(response)
+
     except Exception as ex:
         if is_server_crashed(ex):
-            log_server_error(
-             queue_, SERVER_TYPE, clients_total,
-             'fatal_error', str(ex))
-            srv_status[0] = False
-            return False
-        print(ex)
+            log_server_error(queue_, SERVER_TYPE, clients_total, 'fatal_error', str(ex))
+            srv_status.value = False
+        return False
+
     return True
 
 
@@ -100,7 +139,7 @@ def log_server_error(que: NamedQueue,
         'message': message,
         'timestamp': round(time.time(), 6)
     }
-    que.put(log)
+    send_to_base(log)
 
 
 CRITICAL_SERVER_ERRNOS = {
@@ -121,179 +160,167 @@ def is_server_crashed(ex: BaseException) -> bool:
 
 
 def server_select(
- srv: socket.socket, QUE: NamedQueue,
- SERVER_TYPE: str, total_clients_quantity: int) -> None:
+ QUE: NamedQueue,
+ SERVER_TYPE: str,
+ total_clients_quantity: int,
+ srv_status: Synchronized) -> None:
+    srv = server_sock()
     print(srv)
-
-    def event_loop(
-     server_socket: socket.socket,
-     queue_: NamedQueue,
-     clients_total: int) -> None:
-        sockets = set()
-        sockets.add(server_socket)
-        while sockets and srv_status:
-            # print(f'{len(sockets) = }')
-            try:
-                sockets_for_read, _, _ = select.select(sockets, [], [], 5)
-                for sock in sockets_for_read:
-                    if not srv_status:
-                        break
-                    if sock is server_socket:
-                        accept_conn(sock, sockets, queue_,
-                                     clients_total, SERVER_TYPE)
-                    else:
-                        if not send_response(
-                         sock, queue_,
-                         clients_total, SERVER_TYPE):
-                            sockets.remove(sock)
-                if not sockets_for_read:
-                    print('No conection spotted')
-                    server_socket.close()
-                    sockets.remove(server_socket)
-            except Exception as ex:
-                if is_server_crashed(ex):
-                    log_server_error(
-                     queue_, SERVER_TYPE, clients_total,
-                     'fatal_error', str(ex))
-                    print('\033[31mSERVER CRASHED\033[0m')
-                    srv_status[0] = False
+    sockets = set((srv,))
+    while sockets and srv_status.value:
+        # print(f'{len(sockets) = }')
+        try:
+            sockets_for_read, _, _ = select.select(sockets, [], [], 5)
+            for sock in sockets_for_read:
+                if not srv_status.value:
                     break
-                print(ex)
+                if sock is srv:
+                    accept_conn(sock, sockets, QUE,
+                                 total_clients_quantity, SERVER_TYPE,
+                                 srv_status)
+                else:
+                    if not send_response(
+                     sock, QUE,
+                     total_clients_quantity, SERVER_TYPE, srv_status):
+                        sockets.remove(sock)
+            if not sockets_for_read:
+                print('No conection spotted')
+                srv.close()
+                sockets.remove(srv)
+        except Exception as ex:
+            if is_server_crashed(ex):
                 log_server_error(
-                 queue_, SERVER_TYPE,
-                 clients_total, 'select_error', str(ex))
+                 QUE, SERVER_TYPE, total_clients_quantity,
+                 'fatal_error', str(ex))
+                print('\033[31mSERVER CRASHED\033[0m')
+                srv_status.value = False
                 break
+            print(ex)
+            log_server_error(
+             QUE, SERVER_TYPE,
+             total_clients_quantity, 'select_error', str(ex))
+            break
 
-    event_loop(srv, QUE, total_clients_quantity)
     srv.close()
     print('Server stopped')
 
 
 def server_unblocked(
- srv: socket.socket,
  QUE: NamedQueue,
  SERVER_TYPE: str,
- total_clients_quantity: int) -> None:
+ total_clients_quantity: int,
+ srv_status: Synchronized) -> None:
+    srv = server_sock()
     srv.setblocking(False)
+    connections: set[ClientConnection] = set()
+    delay: float = 0
 
-    def event_loop(
-     server_socket: socket.socket,
-     queue_: NamedQueue,
-     clients_total: int) -> None:
-        sockets: set[socket.socket] = set()
-        delay: int | float = 0
+    while srv_status.value:
+        try:
+            accept_conn(srv, connections, QUE,
+                        total_clients_quantity,
+                        SERVER_TYPE, srv_status, mode='unblocking')
+            delay = 0
+        except BlockingIOError:
+            if not delay:
+                delay = time.time()
+            if time.time() - delay >= 3:
+                print('No connection spotted')
+                srv.close()
+                break
+        try:
+            for sock in set(connections):
+                if not send_response(
+                 sock, QUE,
+                 total_clients_quantity, SERVER_TYPE, srv_status):
+                    connections.remove(sock)
+        except Exception as ex:
+            if is_server_crashed(ex):
+                log_server_error(
+                 QUE, SERVER_TYPE, total_clients_quantity,
+                 'fatal_error', str(ex))
+                print('\033[31mSERVER CRASHED\033[0m')
+                srv_status.value = False
+                break
+            raise
+        time.sleep(0)
 
-        while srv_status[0]:
-            try:
-                accept_conn(srv, sockets, queue_,
-                            clients_total,
-                            SERVER_TYPE, mode='unblocking')
-                delay = 0
-            except BlockingIOError:
-                if not delay:
-                    delay = time.time()
-                if time.time() - delay >= 3:
-                    print('No connection spotted')
-                    server_socket.close()
-                    break
-            try:
-                for sock in set(sockets):
-                    if not send_response(
-                     sock, queue_,
-                     clients_total, SERVER_TYPE):
-                        sockets.remove(sock)
-            except Exception as ex:
-                if is_server_crashed(ex):
-                    log_server_error(
-                     queue_, SERVER_TYPE, clients_total,
-                     'fatal_error', str(ex))
-                    print('\033[31mSERVER CRASHED\033[0m')
-                    srv_status[0] = False
-                    break
-                raise
-
-    event_loop(srv, QUE, total_clients_quantity)
     srv.close()
     print('Server stopped')
 
 
 def server_mixed(
-    srv: socket.socket,
     QUE: NamedQueue,
     SERVER_TYPE: str,
-    total_clients_quantity: int
+    total_clients_quantity: int,
+    srv_status: Synchronized
 ) -> None:
+    srv = server_sock()
     srv.setblocking(False)
 
-    def event_loop(
-        server_socket: socket.socket,
-        queue_: NamedQueue,
-        clients_total: int
-    ) -> None:
-        sockets: set[socket.socket] = set()
-        delay: int | float = 0
+    sockets: set[socket.socket] = set()
+    delay: int | float = 0
 
-        while srv_status[0]:
+    while srv_status.value:
+        try:
+            accept_conn(srv, sockets, QUE,
+             total_clients_quantity, SERVER_TYPE, srv_status)
+            delay = 0
+        except BlockingIOError:
+            if not delay:
+                delay = time.time()
+            if time.time() - delay >= 5:
+                print('No connection spotted')
+                srv.close()
+                break
+
             try:
-                accept_conn(server_socket, sockets, queue_,
-                 clients_total, SERVER_TYPE)
-                delay = 0
-            except BlockingIOError:
-                if not delay:
-                    delay = time.time()
-                if time.time() - delay >= 5:
-                    print('No connection spotted')
-                    server_socket.close()
-                    break
-
-                try:
-                    sockets_for_read, _, _ = select.select(sockets, [], [], 0)
-                except Exception as ex:
-                    if is_server_crashed(ex):
-                        log_server_error(
-                            queue_, SERVER_TYPE, clients_total,
-                            'fatal_error', str(ex))
-                        print('\033[31mSERVER CRASHED\033[0m')
-                        srv_status[0] = False
-                        break
-                    print(ex)
-                    log_server_error(
-                        queue_, SERVER_TYPE, clients_total,
-                        'select_error', str(ex))
-                    continue
-
-                for sock in set(sockets_for_read):
-                    if not send_response(sock, queue_,
-                     clients_total, SERVER_TYPE):
-                        sockets.remove(sock)
-                        try:
-                            sock.close()
-                        except OSError:
-                            pass
-
+                sockets_for_read, _, _ = select.select(sockets, [], [], 0)
             except Exception as ex:
                 if is_server_crashed(ex):
                     log_server_error(
-                        queue_, SERVER_TYPE, clients_total,
+                        QUE, SERVER_TYPE, total_clients_quantity,
                         'fatal_error', str(ex))
-                    srv_status[0] = False
+                    print('\033[31mSERVER CRASHED\033[0m')
+                    srv_status.value = False
                     break
                 print(ex)
                 log_server_error(
-                    queue_, SERVER_TYPE, clients_total,
-                    'accept_error', str(ex))
-                break
+                    QUE, SERVER_TYPE, total_clients_quantity,
+                    'select_error', str(ex))
+                continue
 
-    event_loop(srv, QUE, total_clients_quantity)
+            for sock in set(sockets_for_read):
+                if not send_response(sock, QUE,
+                 total_clients_quantity, SERVER_TYPE, srv_status):
+                    sockets.remove(sock)
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
+
+        except Exception as ex:
+            if is_server_crashed(ex):
+                log_server_error(
+                    QUE, SERVER_TYPE, total_clients_quantity,
+                    'fatal_error', str(ex))
+                srv_status.value = False
+                break
+            print(ex)
+            log_server_error(
+                QUE, SERVER_TYPE, total_clients_quantity,
+                'accept_error', str(ex))
+            break
+
     srv.close()
     print('Server stopped')
 
 
 def server_async(
-    _unused: None,
     QUE: NamedQueue,
     SERVER_TYPE: str,
-    total_clients_quantity: int
+    total_clients_quantity: int,
+    srv_status: Synchronized
 ) -> None:
 
     async def handle_client(reader: asyncio.StreamReader,
@@ -303,9 +330,9 @@ def server_async(
                 try:
                     data = await reader.read(1024)
                 except asyncio.IncompleteReadError:
-                    break  # клиент закрыл соединение нештатно
+                    break  # the client closed the connection abnormally
                 except ConnectionResetError:
-                    break  # клиент разорвал соединение
+                    break  # The client has disconnected
                 except Exception as ex:
                     log_server_error(
                         QUE, SERVER_TYPE, total_clients_quantity,
@@ -313,7 +340,7 @@ def server_async(
                     break
 
                 if not data:
-                    break  # клиент закрыл соединение штатно
+                    break  # the client closed the connection normally
 
                 try:
                     now = time.time()
@@ -342,7 +369,7 @@ def server_async(
             log_server_error(
                 QUE, SERVER_TYPE, total_clients_quantity,
                 'start_server_error', str(ex))
-            srv_status[0] = False
+            srv_status.value = False
             return None
 
         async with server:
@@ -355,7 +382,7 @@ def server_async(
                     log_server_error(
                         QUE, SERVER_TYPE, total_clients_quantity,
                         'fatal_error', str(ex))
-                    srv_status[0] = False
+                    srv_status.value = False
                 else:
                     log_server_error(
                         QUE, SERVER_TYPE, total_clients_quantity,
@@ -370,7 +397,7 @@ def server_async(
                 'event_loop_crash', str(ex))
             if is_server_crashed(ex):
                 print('\033[31mSERVER CRASHED\033[0m')
-                srv_status[0] = False
+                srv_status.value = False
 
     runner()
     print('Server stopped')

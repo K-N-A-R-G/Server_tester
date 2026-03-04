@@ -22,7 +22,7 @@ def save_templates(templates: dict[str, dict[str, str]]) -> None:
         json.dump(templates, f, ensure_ascii=False, indent=2)
 
 
-def get_query(name: str) -> tuple[str, str, list[str] | None]:
+def get_query(name: str) -> tuple[str, str, list[str]]:
     '''Retrieve the description, SQL text, and optional headers
     for a given template name.
     '''
@@ -30,8 +30,8 @@ def get_query(name: str) -> tuple[str, str, list[str] | None]:
     entry = templates.get(name)
     if entry:
         return entry.get("description", ""), entry.get("query", ""),\
-            entry.get("headers")
-    return "", "", None
+            entry.get("headers", [])
+    return "", "", []
 
 
 def choose_template() -> str | None:

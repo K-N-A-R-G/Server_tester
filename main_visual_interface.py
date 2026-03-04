@@ -73,7 +73,8 @@ def main():
 \n 2.Client success distribution (per server) - Select a server and display\
  the ratio of fully/partially/failed connections across all waves\
 \n 3. Average server response time - Show average/median/percentile (pNN)\
- response times per server type\n')
+ response times per server type\
+\n \033[1mAny other key -- Cancel\033[0m\n')
                 if dia_type:
                     if dia_type == '1':
                         try:
