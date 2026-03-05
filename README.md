@@ -1,6 +1,18 @@
 # Server-Client Benchmarking and Visualization Suite
 
-This project provides tools for running server-client performance tests, collecting statistical data into SQLite, and visualizing results interactively via Tkinter and Matplotlib.
+This project provides tools for running server-client performance tests, collecting statistical data into SQLite, and visualizing results interactively via Tkinter and Matplotlib...
+
+# No.
+### This project creates a maximally aggressive environment designed to expose every "minor" weakness in the performance and stability of client-server systems. It forces you to find the absolute breaking point and identify exactly where your architecture fails under pressure.
+
+
+      He will not survive, I guarantee. And you'll see, when it happens.
+
+   - Zerg-rush load mechanics: Load generation by tens of thousands of parallel sockets (limited only by OS resources).
+
+   - Industrial-grade Logging: A multi-threaded queue capable of digesting millions of records in SQLite without a single error while the server is suffocating under load.
+
+   - 4 Pre-built Targets: Ability to test 4 different server architectures out of the box to find the one that coughs the latest.
 
 ---
 Table view, multi-line graph, and stacked diagram examples:
@@ -8,6 +20,7 @@ Table view, multi-line graph, and stacked diagram examples:
 ![table](images/table.png)
 ![graph](images/graph.png)
 ![diagram](images/diagram.png)
+![terminal](images/terminal.png)
 
 ---
 ## Overview
